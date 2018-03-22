@@ -2,16 +2,20 @@
 
 make clean
 
-make build
+make build_parallel
 
 if [ $? -ne 0 ]; then
     echo "Compilation failed ☠️"
     exit 1
 fi
 
+echo
+
 ITER=$1
-# TSEQ=$2
+# GAT
 TSEQ=68.6
+# TEEN
+# TSEQ=24.8
 
 ACCUMULATED=0
 
@@ -31,4 +35,3 @@ done
 echo "========================="
 AVERAGE=$(echo "$ACCUMULATED / $ITER" | bc -l)
 echo "Speedup average: $AVERAGE"
-
