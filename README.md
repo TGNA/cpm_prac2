@@ -30,3 +30,8 @@ Copy files to zoo:
 ```sh
 $ scp -P 8022 fitxer $URV_USER@localhost:.
 ```
+
+Calculate speedup N times and create average:
+```sh
+$ sh speedup.sh N
+```
