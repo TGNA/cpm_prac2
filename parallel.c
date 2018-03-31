@@ -3,6 +3,7 @@
 #include <time.h>
 #include <strings.h>
 #include <assert.h>
+#include <omp.h>
 
 #define N 5000L
 #define ND N*N/100
@@ -19,28 +20,28 @@ long long Suma;
 
 int cmp_fil(const void *pa, const void *pb)
 {
-tmd * a = (tmd*)pa;
-tmd * b = (tmd*)pb;
+    tmd * a = (tmd*)pa;
+    tmd * b = (tmd*)pb;
 
-  if (a->i > b->i) return(1);
-  else if (a->i < b->i) return (-1);
-  else return (a->j - b->j);
+    if (a->i > b->i) return(1);
+    else if (a->i < b->i) return (-1);
+    else return (a->j - b->j);
 }
 
 int cmp_col(const void *pa, const void *pb)
 {
-tmd * a = (tmd*)pa;
-tmd * b = (tmd*)pb;
+    tmd * a = (tmd*)pa;
+    tmd * b = (tmd*)pb;
 
-  if (a->j > b->j) return(1);
-  else if (a->j < b->j) return (-1);
-  else return (a->i - b->i);
+    if (a->j > b->j) return(1);
+    else if (a->j < b->j) return (-1);
+    else return (a->i - b->i);
 }
 
 int main()
 {
     int i,j,k,neleC;
-    omp_set_num_threads(8);
+
     #pragma omp parallel sections
     {
         #pragma omp section
@@ -65,10 +66,8 @@ int main()
                 A[AD[k].i][AD[k].j] = AD[k].v;
             }
             
-            //#pragma omp section
             qsort(AD,ND,sizeof(tmd),cmp_fil); // ordenat per files
 
-            //#pragma omp section
             for(k=0;k<ND;k++)
             {
                 BD[k].i=rand()%(N-1);
@@ -85,17 +84,16 @@ int main()
             
             //#pragma omp section
             qsort(BD,ND,sizeof(tmd),cmp_col); // ordenat per columnes
+
+            // calcul dels index de les columnes
+            k=0;
+            for (j=0; j<N+1; j++)
+            {
+                while (k < ND && j>BD[k].j) k++;
+                jBD[j] = k;
+            }  
         }
     }
-
-    // calcul dels index de les columnes
-    k=0;
-    for (j=0; j<N+1; j++)
-    {
-      while (k < ND && j>BD[k].j) k++;
-      jBD[j] = k;
-    }  
-
 
     ////Matriu x matriu original (recorregut de C per columnes)
     //for (i=0;i<N;i++)
@@ -104,7 +102,7 @@ int main()
     //            C[j][i] += A[j][k] * B[k][i];
  
     //Matriu dispersa per matriu
-    #pragma omp parallel for collapse(2)
+    #pragma omp parallel for private(k)
     for(i=0;i<N;i++)
         for (k=0;k<ND;k++)
             C1[AD[k].i][i] += AD[k].v * B[AD[k].j][i];
@@ -115,17 +113,19 @@ int main()
         VBcol[j] = 0;
 
     for(i=0;i<N;i++)
-      {
+    {
         // expandir Columna de B[*][i]
         for (k=jBD[i];k<jBD[i+1];k++)
                 VBcol[BD[k].i] = BD[k].v;
         // Calcul de tota una columna de C
+        #pragma omp parallel for
         for (k=0;k<ND;k++)
             C2[AD[k].i][i] += AD[k].v * VBcol[AD[k].j];
         // neteja vector de B[*][i]
+        #pragma omp parallel for
         for (j=0;j<N;j++)
             VBcol[j] = 0;
-      }
+    }
                 
     //Matriu dispersa per matriu dispersa -> dona matriu Dispersa
     neleC=0;
@@ -133,43 +133,50 @@ int main()
         VBcol[j] = VCcol[j] = 0;
 
     for(i=0;i<N;i++)
-      {
+    {
         // expandir Columna de B[*][i]
         for (k=jBD[i];k<jBD[i+1];k++)
                 VBcol[BD[k].i] = BD[k].v;
         // Calcul de tota una columna de C
+        #pragma omp parallel for
         for (k=0;k<ND;k++)
             VCcol[AD[k].i] += AD[k].v * VBcol[AD[k].j];
+
         for (j=0;j<N;j++)
-         {
+        {
             // neteja vector de B[*][i]
             VBcol[j] = 0;
             // Compressio de C
             if (VCcol[j])
-             {
+            {
                 CD[neleC].i = j;
                 CD[neleC].j = i;
                 CD[neleC].v = VCcol[j];
                 VCcol[j] = 0;
                 neleC++;
-             }
-         }
-      }
+            }
+        }
+   }
 
     // Comprovacio MD x M -> M i MD x MD -> M
     for (i=0;i<N;i++)
+        #pragma omp parallel for ordered
         for(j=0;j<N;j++)
             if (C2[i][j] != C1[i][j])
+                #pragma omp ordered
                 printf("Diferencies C1 i C2 pos %d,%d: %d != %d\n",i,j,C1[i][j],C2[i][j]);
 
     // Comprovacio MD X MD -> M i MD x MD -> MD
     Suma = 0;
+    #pragma omp parallel for ordered reduction(+:Suma)
     for(k=0;k<neleC;k++)
-     {
+    {
         Suma += CD[k].v;
-        if (CD[k].v != C1[CD[k].i][CD[k].j])
+        if (CD[k].v != C1[CD[k].i][CD[k].j]){
+            #pragma omp ordered
             printf("Diferencies C1 i CD a i:%d,j:%d,v%d, k:%d, vd:%d\n",CD[k].i,CD[k].j,C1[CD[k].i][CD[k].j],k,CD[k].v);
-     }
+        }
+    }
      
     printf ("\nNumero elements de la matriu dispersa C %d\n",neleC);   
     printf("Suma dels elements de C %lld \n",Suma);
