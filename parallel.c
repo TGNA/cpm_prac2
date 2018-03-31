@@ -40,49 +40,62 @@ tmd * b = (tmd*)pb;
 int main()
 {
     int i,j,k,neleC;
-    
-    bzero(C,sizeof(int)*(N*N));
-    bzero(C1,sizeof(int)*(N*N));
-    bzero(C2,sizeof(int)*(N*N));
-     
-    for(k=0;k<ND;k++)
+    omp_set_num_threads(8);
+    #pragma omp parallel sections
     {
-        AD[k].i=rand()%(N-1);
-        AD[k].j=rand()%(N-1);
-        AD[k].v=rand()%100;
-        while (A[AD[k].i][AD[k].j]) {
-            if(AD[k].i < AD[k].j)
-                AD[k].i = (AD[k].i + 1)%N;
-            else 
-                AD[k].j = (AD[k].j + 1)%N;
-        }
-        A[AD[k].i][AD[k].j] = AD[k].v;
-    }
-    qsort(AD,ND,sizeof(tmd),cmp_fil); // ordenat per files
+        #pragma omp section
+        bzero(C,sizeof(int)*(N*N));
+        #pragma omp section
+        bzero(C1,sizeof(int)*(N*N));
+        #pragma omp section
+        bzero(C2,sizeof(int)*(N*N));
+        #pragma omp section
+        {
+            for(k=0;k<ND;k++)
+            {
+                AD[k].i=rand()%(N-1);
+                AD[k].j=rand()%(N-1);
+                AD[k].v=rand()%100;
+                while (A[AD[k].i][AD[k].j]) {
+                    if(AD[k].i < AD[k].j)
+                        AD[k].i = (AD[k].i + 1)%N;
+                    else 
+                        AD[k].j = (AD[k].j + 1)%N;
+                }
+                A[AD[k].i][AD[k].j] = AD[k].v;
+            }
+            
+            //#pragma omp section
+            qsort(AD,ND,sizeof(tmd),cmp_fil); // ordenat per files
 
-    for(k=0;k<ND;k++)
-    {
-        BD[k].i=rand()%(N-1);
-        BD[k].j=rand()%(N-1);
-        BD[k].v=rand()%100;
-        while (B[BD[k].i][BD[k].j]) {
-            if(BD[k].i < BD[k].j)
-                BD[k].i = (BD[k].i + 1)%N;
-            else 
-                BD[k].j = (BD[k].j + 1)%N;
+            //#pragma omp section
+            for(k=0;k<ND;k++)
+            {
+                BD[k].i=rand()%(N-1);
+                BD[k].j=rand()%(N-1);
+                BD[k].v=rand()%100;
+                while (B[BD[k].i][BD[k].j]) {
+                    if(BD[k].i < BD[k].j)
+                        BD[k].i = (BD[k].i + 1)%N;
+                    else 
+                        BD[k].j = (BD[k].j + 1)%N;
+                }
+                B[BD[k].i][BD[k].j] = BD[k].v;
+            }
+            
+            //#pragma omp section
+            qsort(BD,ND,sizeof(tmd),cmp_col); // ordenat per columnes
         }
-        B[BD[k].i][BD[k].j] = BD[k].v;
     }
 
-    qsort(BD,ND,sizeof(tmd),cmp_col); // ordenat per columnes
-    
     // calcul dels index de les columnes
     k=0;
     for (j=0; j<N+1; j++)
-     {
+    {
       while (k < ND && j>BD[k].j) k++;
       jBD[j] = k;
-     }
+    }  
+
 
     ////Matriu x matriu original (recorregut de C per columnes)
     //for (i=0;i<N;i++)
@@ -91,11 +104,13 @@ int main()
     //            C[j][i] += A[j][k] * B[k][i];
  
     //Matriu dispersa per matriu
+    #pragma omp parallel for collapse(2)
     for(i=0;i<N;i++)
         for (k=0;k<ND;k++)
             C1[AD[k].i][i] += AD[k].v * B[AD[k].j][i];
             
     //Matriu dispersa per matriu dispersa
+    #pragma omp parallel for
     for (j=0;j<N;j++)
         VBcol[j] = 0;
 
